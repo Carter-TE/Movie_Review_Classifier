@@ -92,7 +92,7 @@ class BayesianClassifier():
         count = 0
         for j in range(x):
             word = self.rm_ev[0][0]
-            if self.rm_ev[0][1] > .50:
+            if self.rm_ev[0][1] > .1:
                 count += 1
                 self.attr[word] = self.calc_raw_probability(word) # Adds word and raw probability back to list of attr
                 
@@ -203,6 +203,10 @@ class BayesianClassifier():
            neg_file = os.path.join(self.neg_folder_path, self.neg_test_data.iat[0, 0])
            return(neg_file, pos_file)
 
+    def resplit(self):
+        self.pos_train_data, self.pos_test_data = self.split_train_test(self.pos_folder_path)     # data type: dataframe - single column of file names
+        self.neg_train_data, self.neg_test_data = self.split_train_test(self.neg_folder_path)
+
 class MovieReviewClassifier():
     def __init__(self, pos_folder='pos', neg_folder='neg'):
         self.bc = BayesianClassifier(pos_folder, neg_folder)
@@ -291,7 +295,7 @@ class MovieReviewClassifier():
                 neg_correct += 1
 
 
-        print("Total Tests: ",tot_tests)
+        print("\nTotal Tests: ",tot_tests)
         print("Pos Correct: ",pos_correct,"/", pos_tests.shape[0])
         print("Neg Correct: ",neg_correct,"/", neg_tests.shape[0])
         print("Tot Correct: ",pos_correct + neg_correct,"/", tot_tests)
@@ -328,12 +332,19 @@ if __name__ == '__main__':
 
     classifier = MovieReviewClassifier(pos_file_path,neg_file_path)
     test_files = classifier.bc.get_test_file()
-    classifier.test()
-    classifier.learn(5000,3000)
     correct, total = classifier.test()
     accuracy = int((correct/total)*100)
-    i = 0
-    while accuracy < 85:
+
+    # print(classifier.classify("./new_neg/neg001.txt"))
+    
+    for i in range(5):
+        classifier.bc.resplit()
+        correct, total = classifier.test()
+        accuracy = int((correct/total)*100)
+        print(accuracy,"percent correct\n")
+
+    # Self training loop - learns in wrong direction
+    """while accuracy < 79:
         classifier.learn(1000,500)
         correct, total = classifier.test()
         accuracy = int((correct/total)*100)
@@ -341,7 +352,7 @@ if __name__ == '__main__':
 
         if i == 10: 
             break
-
+"""
    
     
     
