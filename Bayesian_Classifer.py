@@ -51,9 +51,7 @@ class BayesianClassifier():
             self.attr_usefulness[word] = usefullness
                     
         self.update_top_attr()
-
-            
-            
+                  
     def train(self, n, x):
         """Trains classifer by randomly removing attributes add adding back in the ones with 
         the highest usefullness value. Updates pos_ev, neg_ev, and rm_ev fields
@@ -160,7 +158,7 @@ class BayesianClassifier():
         # Counts the word occurrneces line by line 
         words = text.split()
         for word in words:
-            if len(word) < 6:
+            if len(word) < 5:
                 continue
             if word in word_dict:
                 word_dict[word] += 1
@@ -207,6 +205,8 @@ class BayesianClassifier():
         self.pos_train_data, self.pos_test_data = self.split_train_test(self.pos_folder_path)     # data type: dataframe - single column of file names
         self.neg_train_data, self.neg_test_data = self.split_train_test(self.neg_folder_path)
 
+
+
 class MovieReviewClassifier():
     def __init__(self, pos_folder='pos', neg_folder='neg'):
         self.bc = BayesianClassifier(pos_folder, neg_folder)
@@ -226,26 +226,39 @@ class MovieReviewClassifier():
 
     def compute_probability(self, text=None):
         """Computes the probability of a class given all the attributes"""
-        pos_prob = .5
-        neg_prob = .5
         attr_count = 0
-        for attr in self.top_attributes:            
-            if  attr not in text: # text is not None and
+
+        present_pos_probs = [math.log(self.top_attributes[attr][1]) for attr in self.top_attributes if attr in text]
+        present_neg_probs = [math.log(self.top_attributes[attr][0]) for attr in self.top_attributes if attr in text]
+
+        present_pos_probs = present_pos_probs + [math.log(self.attributes[attr][1]) for attr in self.attributes if attr in text]
+        present_neg_probs = present_neg_probs + [math.log(self.attributes[attr][0]) for attr in self.attributes if attr in text]
+
+        attr_count = len(present_pos_probs)
+        pos_prob = 0
+        neg_prob = 0
+
+        for i in range(attr_count):
+            """if max(pos_prob, 10e-5) 
+                != pos_prob or max(neg_prob, 10e-5) != neg_prob: 
                 continue
-            
-            n = 1/(pos_prob+neg_prob)
-            pos_prob = n*pos_prob
-            neg_prob = n*neg_prob
+                pos_prob *= 10e5
+                neg_prob *= 10e5"""
 
-            pos_prob = (pos_prob * self.top_attributes[attr][1]) + 1
-            neg_prob = (neg_prob * self.top_attributes[attr][0]) + 1 
-            
-            
-            attr_count += 1
+            pos_prob = pos_prob + present_pos_probs[i]
+            neg_prob = neg_prob +  present_neg_probs[i]
 
-        
 
-        top_attr_prob = (neg_prob, pos_prob)
+
+        #pos_prob = math.prod(present_pos_probs) 
+        #neg_prob = math.prod(present_neg_probs) 
+
+        n = 1#/(pos_prob+neg_prob)
+        pos_prob = n*pos_prob #*.5
+        neg_prob = n*neg_prob #*.5
+
+        top_attr_prob = ()# (neg_prob, pos_prob)
+        return neg_prob, pos_prob, top_attr_prob
         #print("Based on ",attr_count,"top attrs: ",top_attr_prob)
 
         for attr in self.attributes:            
@@ -253,16 +266,18 @@ class MovieReviewClassifier():
                 continue
             #if pos_prob + neg_prob < 1e-200:
                 # Normalize
-            n = 1/(pos_prob+neg_prob)
-            pos_prob = n*pos_prob
-            neg_prob = n*neg_prob
+            
 
             pos_prob = (pos_prob * self.attributes[attr][1]) #+ 1
             neg_prob = (neg_prob * self.attributes[attr][0]) #+ 1 
-            
-           
+
             attr_count += 1
         
+                    
+        n = 1/(pos_prob+neg_prob)
+        pos_prob = n*pos_prob
+        neg_prob = n*neg_prob
+
         
         #print("Attributes included: ",attr_count,"/",len(self.attributes)+len(self.top_attributes))    
         return neg_prob, pos_prob, top_attr_prob
@@ -334,8 +349,10 @@ if __name__ == '__main__':
     test_files = classifier.bc.get_test_file()
     correct, total = classifier.test()
     accuracy = int((correct/total)*100)
+    print(accuracy,"percent correct\n")
 
-    # print(classifier.classify("./new_neg/neg001.txt"))
+    #print(classifier.classify("./new_neg/neg001.txt"))
+    #print(classifier.classify("./new_pos/pos001.txt"))
     
     for i in range(5):
         classifier.bc.resplit()
