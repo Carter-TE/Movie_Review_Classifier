@@ -9,25 +9,33 @@ from numpy.core.fromnumeric import sort
 import pandas as pd
 import math
 import random
+import json
 
 class BayesianClassifier():
-    def __init__(self, pos_path='pos', neg_path='neg' ):
+    def __init__(self, pos_path='pos', neg_path='neg', atr=None, t_atr=None):
         self.pos_counts = dict()
         self.neg_counts = dict()
         self.pos_ev = list() 
         self.neg_ev = list()
         self.rm_ev = list()
         self.attr_usefulness = dict()
-        self.attr = dict()
-        self.top_attr = dict()
+        self.attr = atr
+        self.top_attr = t_atr
         self.pos_folder_path = pos_path
         self.neg_folder_path = neg_path
         self.pos_train_data, self.pos_test_data = self.split_train_test(self.pos_folder_path)     # data type: dataframe - single column of file names
         self.neg_train_data, self.neg_test_data = self.split_train_test(self.neg_folder_path)
-
-        self.pos_counts = self.count_words(self.pos_train_data, self.pos_counts, self.pos_folder_path)
-        self.neg_counts = self.count_words(self.neg_train_data, self.neg_counts, self.neg_folder_path)
-        self.initialize()
+        
+        if atr is None:
+            self.attr = dict()
+            self.top_attr = dict() 
+            self.pos_counts = self.count_words(self.pos_train_data, self.pos_counts, self.pos_folder_path)
+            self.neg_counts = self.count_words(self.neg_train_data, self.neg_counts, self.neg_folder_path)
+            self.initialize()
+            with open('attributes.json', 'w') as f:
+                json.dump(self.attr, f)
+            with open('top_attributes.json', 'w') as f:
+                json.dump(self.top_attr, f)
     
     def initialize(self):
         pos_word_count = sum(self.pos_counts.values())
@@ -158,7 +166,7 @@ class BayesianClassifier():
         # Counts the word occurrneces line by line 
         words = text.split()
         for word in words:
-            if len(word) < 5:
+            if len(word) < 4:
                 continue
             if word in word_dict:
                 word_dict[word] += 1
@@ -209,10 +217,18 @@ class BayesianClassifier():
 
 class MovieReviewClassifier():
     def __init__(self, pos_folder='pos', neg_folder='neg'):
-        self.bc = BayesianClassifier(pos_folder, neg_folder)
-        self.attributes = self.bc.get_attributes()
-        self.top_attributes = self.bc.get_top_attributes()
-        self.test_files = self.bc.get_test_file()
+        try:
+            with open('attributes.json') as f:
+                self.attributes = json.load(f)
+            with open('top_attributes.json') as f:
+                self.top_attributes = json.load(f)
+            self.bc = BayesianClassifier(pos_folder, neg_folder, self.attributes, self.top_attributes)
+        except FileNotFoundError:
+            self.bc = BayesianClassifier(pos_folder, neg_folder)
+            self.top_attributes = self.bc.get_top_attributes()
+            self.attributes = self.bc.get_attributes()
+        
+        
         
     def learn(self, rm=250, add_back=125):
         current_attr = dict(self.attributes)
@@ -239,74 +255,36 @@ class MovieReviewClassifier():
         neg_prob = 0
 
         for i in range(attr_count):
-            """if max(pos_prob, 10e-5) 
-                != pos_prob or max(neg_prob, 10e-5) != neg_prob: 
-                continue
-                pos_prob *= 10e5
-                neg_prob *= 10e5"""
-
             pos_prob = pos_prob + present_pos_probs[i]
             neg_prob = neg_prob +  present_neg_probs[i]
 
-
-
-        #pos_prob = math.prod(present_pos_probs) 
-        #neg_prob = math.prod(present_neg_probs) 
-
-        n = 1#/(pos_prob+neg_prob)
-        pos_prob = n*pos_prob #*.5
-        neg_prob = n*neg_prob #*.5
-
-        top_attr_prob = ()# (neg_prob, pos_prob)
-        return neg_prob, pos_prob, top_attr_prob
-        #print("Based on ",attr_count,"top attrs: ",top_attr_prob)
-
-        for attr in self.attributes:            
-            if  attr not in text: # text is not None and
-                continue
-            #if pos_prob + neg_prob < 1e-200:
-                # Normalize
-            
-
-            pos_prob = (pos_prob * self.attributes[attr][1]) #+ 1
-            neg_prob = (neg_prob * self.attributes[attr][0]) #+ 1 
-
-            attr_count += 1
-        
-                    
-        n = 1/(pos_prob+neg_prob)
-        pos_prob = n*pos_prob
-        neg_prob = n*neg_prob
-
-        
-        #print("Attributes included: ",attr_count,"/",len(self.attributes)+len(self.top_attributes))    
-        return neg_prob, pos_prob, top_attr_prob
+        return neg_prob, pos_prob
     
-    def test(self):
+    def test(self, pos_path, neg_path):
         neg_correct = 0
         pos_correct = 0
         pos_tests = self.bc.pos_test_data
         neg_tests = self.bc.neg_test_data
         tot_tests = 0
     
-        for i in range(len(os.listdir(pos_file_path))):
+        for i in range(len(os.listdir(pos_path))):
             try:
-                file = os.path.join(pos_file_path, pos_tests.at[i, 0])
+                file = os.path.join(pos_path, pos_tests.at[i, 0])
             except KeyError:
                 continue
             prediction = classifier.classify(file)
             tot_tests += 1
-            if prediction[0] == 1:
+            if prediction == 1:
                 pos_correct += 1
 
-        for i in range(len(os.listdir(neg_file_path))):
+        for i in range(len(os.listdir(neg_path))):
             try:
-                file = os.path.join(neg_file_path, neg_tests.at[i, 0])
+                file = os.path.join(neg_path, neg_tests.at[i, 0])
             except KeyError:
                 continue
             prediction = classifier.classify(file)
             tot_tests += 1
-            if prediction[0] == 0:
+            if prediction == 0:
                 neg_correct += 1
 
 
@@ -325,19 +303,15 @@ class MovieReviewClassifier():
             print("Invalide file name/path")
             return
 
-        neg_prob, pos_prob, top_attr_probs = self.compute_probability(text)
+        neg_prob, pos_prob = self.compute_probability(text)
 
-        confidence = (neg_prob,pos_prob)
-        prediction = max(confidence)
+        liklihood = (neg_prob,pos_prob)
+        prediction = max(liklihood)
 
-        pos_confidence = round(confidence[1]*100)
-        neg_confidence = round(confidence[0]*100)
-        if(prediction == confidence[1]):
-            # print("Positive Review; Confidence: ",pos_confidence,"%")
-            return 1, pos_confidence
+        if(prediction == liklihood[1]):
+            return 1
         else:
-            # print("Negative Review; Confidence: ",neg_confidence,"%")
-            return 0, neg_confidence
+            return 0
 
 
 # Main to test functionality of tokenizer counter
@@ -346,30 +320,44 @@ if __name__ == '__main__':
     neg_file_path = 'neg' # input("Input negative file path: ")
 
     classifier = MovieReviewClassifier(pos_file_path,neg_file_path)
-    test_files = classifier.bc.get_test_file()
-    correct, total = classifier.test()
+    correct, total = classifier.test(pos_file_path, neg_file_path)
     accuracy = int((correct/total)*100)
     print(accuracy,"percent correct\n")
 
+    neg_correct = 0
+    wrong = 0
+    for file_name in os.listdir('new_neg'):
+        file = os.path.join('new_neg', file_name)
+        prediction = classifier.classify(file)
+        if prediction == 0:
+            neg_correct+=1
+        else:
+            wrong+=1
+            #print(wrong)
+
+    pos_correct = 0
+    wrong = 0
+    for file_name in os.listdir('new_pos'):
+        file = os.path.join('new_pos', file_name)
+        prediction = classifier.classify(file)
+        if prediction == 1:
+            pos_correct+=1
+        else:
+            wrong+=1
+            #print(wrong)
+    
+    print("Neg Accuracy: ",neg_correct,'/',len(os.listdir('new_neg')))
+    print("Pos Accuracy: ",pos_correct,'/',len(os.listdir('new_pos')))
+
     #print(classifier.classify("./new_neg/neg001.txt"))
     #print(classifier.classify("./new_pos/pos001.txt"))
-    
+    exit()
     for i in range(5):
         classifier.bc.resplit()
         correct, total = classifier.test()
         accuracy = int((correct/total)*100)
         print(accuracy,"percent correct\n")
 
-    # Self training loop - learns in wrong direction
-    """while accuracy < 79:
-        classifier.learn(1000,500)
-        correct, total = classifier.test()
-        accuracy = int((correct/total)*100)
-        i+=1
-
-        if i == 10: 
-            break
-"""
    
     
     
